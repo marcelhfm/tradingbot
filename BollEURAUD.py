@@ -54,8 +54,12 @@ class BollingerEURUSD():
         params={"granularity":"M5","from": from_date, "to": to_date}
 
         #retrieve data
-        r = instruments.InstrumentsCandles(instrument=self.instrument, params=params)
-        rv = self.client.request(r)
+        try:
+            r = instruments.InstrumentsCandles(instrument=self.instrument, params=params)
+            rv = self.client.request(r)
+        except Exception as e:
+            print("Error retrieving data")
+            print(e)
 
         #save data in dataframe
         for _ in rv["candles"]:
@@ -90,8 +94,12 @@ class BollingerEURUSD():
 
         if trade is open, print unrealized profit
         '''
-        s = trades.OpenTrades(accountID=self.accountID)
-        sv = self.client.request(s)
+        try:
+            s = trades.OpenTrades(accountID=self.accountID)
+            sv = self.client.request(s)
+        except Exception as e:
+            print("Error retrieving trades data")
+            print(e)
 
         if len(sv["trades"]) == 0:
             #no open trades
@@ -138,8 +146,12 @@ class BollingerEURUSD():
                }
             }
 
-            sl = orders.OrderReplace(accountID=self.accountID, data=data, orderID=self.sl_id)
-            sv = self.client.request(sl)
+            try:
+                sl = orders.OrderReplace(accountID=self.accountID, data=data, orderID=self.sl_id)
+                sv = self.client.request(sl)
+            except Exception as e:
+                print("Error changing stop loss")
+                print(e)
 
             self.report_trade(price=price, going_direct="CHANGED STOP LOSS", time= sv["orderCreateTransaction"]["time"], units=0)
 
@@ -200,8 +212,13 @@ class BollingerEURUSD():
                 }
             }
         #execute transaction
-        o = orders.OrderCreate(accountID=self.accountID, data=data)
-        ov = self.client.request(o)
+        try:
+            o = orders.OrderCreate(accountID=self.accountID, data=data)
+            ov = self.client.request(o)
+        except Exception as e:
+            print("Error creating order")
+            print(e)
+            
         self.sl_id = ov["relatedTransactionIDs"][-1]
         self.tp_id = ov["relatedTransactionIDs"][-2]
         self.trade_id = ov["relatedTransactionIDs"][-3]
@@ -221,79 +238,87 @@ class BollingerEURUSD():
         '''
         params = {"instruments":self.instrument}
 
-        r = pricing.PricingStream(accountID=self.accountID, params=params)
-        rv = self.client.request(r)
+        try:
+            r = pricing.PricingStream(accountID=self.accountID, params=params)
+            rv = self.client.request(r)
+        except Exception as e:
+            print("Error starting stream")
+            print(e)
 
         for tick in rv:
-            #renew dataframe with recent data
-            if tick["type"] == 'PRICE':
-                self.ask = float(tick["closeoutAsk"])
-                self.bid = float(tick["closeoutBid"])
-                df = pd.DataFrame({self.instrument: (self.ask + self.bid) / 2}, index = [pd.to_datetime(tick["time"])])
-                self.tick_data = self.tick_data.append(df)
-                self.resample_and_join()
-                
-                #Only if new bar has been added
-                if len(self.raw_data) > self.min_length - 1:
-                    self.min_length += 1
-
-                    #check position and printout unrealized PL
-                    self.check_position()
-
-                    #prepare data
-                    self.data = self.prepare_data()
-
-                    #printout for error checking
-                    print("\n" + "Price: {} | Upper: {} | Lower: {} | SMA: {} \n".format(self.data[self.instrument].iloc[-1],
-                     self.data.upper.iloc[-1] < self.data[self.instrument].iloc[-1],
-                      self.data.lower.iloc[-1] > self.data[self.instrument].iloc[-1],
-                       self.data.sma.iloc[-1] < self.data[self.instrument].iloc[-1]))
+            try:
+                #renew dataframe with recent data
+                if tick["type"] == 'PRICE':
+                    self.ask = float(tick["closeoutAsk"])
+                    self.bid = float(tick["closeoutBid"])
+                    df = pd.DataFrame({self.instrument: (self.ask + self.bid) / 2}, index = [pd.to_datetime(tick["time"])])
+                    self.tick_data = self.tick_data.append(df)
+                    self.resample_and_join()
                     
-                    #Trading algorithm
-                    #neutral position
-                    if self.position == 0:
-                        #second last bar is above upper and last bar is declining
-                        if self.data[self.instrument].iloc[-2] > self.data["upper"].iloc[-2] and np.sign(self.data.returns.iloc[-1]) < 0:
-                        #price has yet not crossed sma again
-                            if not self.data[self.instrument].iloc[-1] < self.data.sma.iloc[-1]:
-                                #Create order: GOING SHORT
-                                self.create_order("SHORT", multi=1)
-                                self.position = -1
-                        #second last bar is below lower and last bar is climbing
-                        elif self.data[self.instrument].iloc[-2] < self.data["lower"].iloc[-2] and np.sign(self.data.returns.iloc[-1]) > 0:
+                    #Only if new bar has been added
+                    if len(self.raw_data) > self.min_length - 1:
+                        self.min_length += 1
+
+                        #check position and printout unrealized PL
+                        self.check_position()
+
+                        #prepare data
+                        self.data = self.prepare_data()
+
+                        #printout for error checking
+                        print("\n" + "Price: {} | Upper: {} | Lower: {} | SMA: {} \n".format(self.data[self.instrument].iloc[-1],
+                        self.data.upper.iloc[-1] < self.data[self.instrument].iloc[-1],
+                        self.data.lower.iloc[-1] > self.data[self.instrument].iloc[-1],
+                        self.data.sma.iloc[-1] < self.data[self.instrument].iloc[-1]))
+                        
+                        #Trading algorithm
+                        #neutral position
+                        if self.position == 0:
+                            #second last bar is above upper and last bar is declining
+                            if self.data[self.instrument].iloc[-2] > self.data["upper"].iloc[-2] and np.sign(self.data.returns.iloc[-1]) < 0:
                             #price has yet not crossed sma again
-                            if not self.data[self.instrument].iloc[-1] > self.data.sma.iloc[-1]:
-                                #create Order: GOING LONG  
-                                self.create_order("LONG", multi=1)
-                                self.position = 1
+                                if not self.data[self.instrument].iloc[-1] < self.data.sma.iloc[-1]:
+                                    #Create order: GOING SHORT
+                                    self.create_order("SHORT", multi=1)
+                                    self.position = -1
+                            #second last bar is below lower and last bar is climbing
+                            elif self.data[self.instrument].iloc[-2] < self.data["lower"].iloc[-2] and np.sign(self.data.returns.iloc[-1]) > 0:
+                                #price has yet not crossed sma again
+                                if not self.data[self.instrument].iloc[-1] > self.data.sma.iloc[-1]:
+                                    #create Order: GOING LONG  
+                                    self.create_order("LONG", multi=1)
+                                    self.position = 1
 
-                    #short position 
-                    elif self.position == -1:
-                        #price has crossed sma
-                        if self.data[self.instrument].iloc[-1] < self.data["sma"].iloc[-1]:
-                            #price has crossed lower
-                            if self.data[self.instrument].iloc[-1] < self.data["lower"].iloc[-1]:
-                                #Create order: GOING LONG      
-                                self.create_order("LONG", multi=2)
-                                self.position = 1
-                            else:
-                                #Create order: GOING NEUTRAL
-                                self.create_order("NEUTRAL", multi=1)
-                                self.position = 0
-                    
-                    #long position
-                    elif self.position == 1:
-                        #price has crossed sma
-                        if self.data[self.instrument].iloc[-1] > self.data["sma"].iloc[-1]:
-                            #price has crossed upper
-                            if self.data[self.instrument].iloc[-1] > self.data["upper"].iloc[-1]:
-                                #Create order: GOING SHORT
-                                self.create_order("SHORT", multi=2)
-                                self.position = -1
-                            else:
-                                #Create order: GOING NEUTRAL
-                                self.create_order("NEUTRAL", multi=-1)
-                                self.position = 0
+                        #short position 
+                        elif self.position == -1:
+                            #price has crossed sma
+                            if self.data[self.instrument].iloc[-1] < self.data["sma"].iloc[-1]:
+                                #price has crossed lower
+                                if self.data[self.instrument].iloc[-1] < self.data["lower"].iloc[-1]:
+                                    #Create order: GOING LONG      
+                                    self.create_order("LONG", multi=2)
+                                    self.position = 1
+                                else:
+                                    #Create order: GOING NEUTRAL
+                                    self.create_order("NEUTRAL", multi=1)
+                                    self.position = 0
+                        
+                        #long position
+                        elif self.position == 1:
+                            #price has crossed sma
+                            if self.data[self.instrument].iloc[-1] > self.data["sma"].iloc[-1]:
+                                #price has crossed upper
+                                if self.data[self.instrument].iloc[-1] > self.data["upper"].iloc[-1]:
+                                    #Create order: GOING SHORT
+                                    self.create_order("SHORT", multi=2)
+                                    self.position = -1
+                                else:
+                                    #Create order: GOING NEUTRAL
+                                    self.create_order("NEUTRAL", multi=-1)
+                                    self.position = 0
+            except Exception as e:
+                print("Error while streaming")
+                print(e)
 
     def report_trade(self, price, going_direct, time, units):
         '''

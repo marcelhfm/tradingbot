@@ -62,8 +62,9 @@ class DNNEURUSD():
         try:
             r = instruments.InstrumentsCandles(instrument=self.instrument, params=params)
             rv = self.client.request(r)
-        except:
+        except Exception as e:
             print("Error retrieving Data")
+            print(e)
 
         #save data in dataframe
         for _ in rv["candles"]:
@@ -120,8 +121,9 @@ class DNNEURUSD():
         try:
             s = trades.OpenTrades(accountID=self.accountID)
             sv = self.client.request(s)
-        except:
+        except Exception as e:
             print("Error requesting Data")
+            print(e)
 
         if len(sv["trades"]) == 0:
             #no open trades
@@ -169,8 +171,9 @@ class DNNEURUSD():
             try:
                 sl = orders.OrderReplace(accountID=self.accountID, data=data, orderID=self.sl_id)
                 sv = self.client.request(sl)
-            except:
+            except Exception as e:
                 print("Error changing stop loss")
+                print(e)
 
             self.report_trade(price=price, going_direct="CHANGED STOP LOSS", time= sv["orderCreateTransaction"]["time"], units=0)
 
@@ -234,8 +237,9 @@ class DNNEURUSD():
         try:
             o = orders.OrderCreate(accountID=self.accountID, data=data)
             ov = self.client.request(o)
-        except:
+        except Exception as e:
             print("Error creating Order")
+            print(e)
             
         self.sl_id = ov["relatedTransactionIDs"][-1]
         self.tp_id = ov["relatedTransactionIDs"][-2]
@@ -256,11 +260,13 @@ class DNNEURUSD():
         try:
             r = pricing.PricingStream(accountID=self.accountID, params=params)
             rv = self.client.request(r)
-        except:
+        except Exception as e:
             print("Error starting stream")
+            print(e)
 
-        try:
-            for tick in rv:
+        
+        for tick in rv:
+            try:
                 #renew dataframe with recent data
                 if tick["type"] == 'PRICE':
                     self.ask = float(tick["closeoutAsk"])
@@ -303,8 +309,9 @@ class DNNEURUSD():
                             if self.data["proba"].iloc[-1] < 0.47:
                                 self.create_order("SHORT", multi=2)
                                 self.position = -1
-        except:
-            print("Streaming interrupted")
+            except Exception as e:
+                print("Streaming interrupted")
+                print(e)
                         
                         
     def report_trade(self, price, going_direct, time, units):
